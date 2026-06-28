@@ -2,6 +2,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from app.db.database import get_db
 from app.core.security import create_access_token
 from app.schemas.token import Token
@@ -22,7 +23,7 @@ async def register_user(
     Đăng ký tài khoản mới (dùng để test). 
     Trong thực tế, bạn có thể thiết lập tài khoản đăng ký mặc định là ADMIN.
     """
-    from app.db.models import User, UserType
+    from app.db.models import User, UserType, UserStatus
     from sqlalchemy.future import select
     from app.core.security import get_password_hash
     
@@ -37,10 +38,16 @@ async def register_user(
         full_name=data.full_name,
         phone=data.phone,
         password_hash=get_password_hash(data.password),
-        user_type=UserType.USER
+        user_type=UserType.USER,
+        status=UserStatus.ACTIVE
     )
-    db.add(new_user)
-    await db.commit()
+    try:
+        db.add(new_user)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Email này đã được đăng ký")
+
     await db.refresh(new_user)
     return new_user
 
