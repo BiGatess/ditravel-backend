@@ -46,3 +46,9 @@ async def get_current_user(
         raise HTTPException(status_code=400, detail="Tài khoản này đã bị khoá")
         
     return user
+
+
+async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.user_type.value != "ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền thực hiện")
+    return current_user

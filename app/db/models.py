@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Integer, Text, Enum, Numeric, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, Date, ForeignKey, Integer, Text, Enum, Numeric, JSON, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -19,6 +19,30 @@ class BannerPosition(str, enum.Enum):
     HOME_MAIN = "HOME_MAIN"
     HOME_SUB = "HOME_SUB"
     POPUP = "POPUP"
+
+class PricingStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    FULL = "FULL"
+    CLOSED = "CLOSED"
+
+class ReviewStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    HIDDEN = "hidden"
+
+class DiscountType(str, enum.Enum):
+    PERCENT = "PERCENT"
+    FIXED = "FIXED"
+
+class VoucherStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    EXPIRED = "EXPIRED"
+
+class BlogStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
 
 # === 1. BẢNG USERS (Người dùng & Admin) ===
 class User(Base):
@@ -175,4 +199,87 @@ class Banner(Base):
     end_date = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PricingRule(Base):
+    __tablename__ = "pricing_rules"
+    __table_args__ = (
+        UniqueConstraint("ticket_type_id", "date", name="uq_pricing_rules_ticket_type_date"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    ticket_type_id = Column(UUID(as_uuid=True), ForeignKey("ticket_types.id"), nullable=False)
+    date = Column(Date, nullable=False, index=True)
+    price = Column(Numeric(12, 2), nullable=False, default=0)
+    original_price = Column(Numeric(12, 2), nullable=True)
+    stock = Column(Integer, nullable=False, default=0)
+    status = Column(Enum(PricingStatus), default=PricingStatus.OPEN, nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
+    product_name = Column(String(200), nullable=False)
+    user_name = Column(String(120), nullable=False)
+    user_avatar = Column(Text, nullable=True)
+    rating = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(Enum(ReviewStatus), default=ReviewStatus.PENDING, nullable=False)
+    admin_reply = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Voucher(Base):
+    __tablename__ = "vouchers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    code = Column(String(50), nullable=False, unique=True, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    discount_type = Column(Enum(DiscountType), default=DiscountType.PERCENT, nullable=False)
+    discount_value = Column(Numeric(12, 2), nullable=False)
+    min_order_value = Column(Numeric(12, 2), nullable=True)
+    max_discount_value = Column(Numeric(12, 2), nullable=True)
+    usage_limit = Column(Integer, nullable=True)
+    used_count = Column(Integer, default=0, nullable=False)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    status = Column(Enum(VoucherStatus), default=VoucherStatus.ACTIVE, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    title = Column(String(250), nullable=False)
+    slug = Column(String(280), nullable=False, unique=True, index=True)
+    excerpt = Column(Text, nullable=True)
+    content = Column(Text, nullable=True)
+    cover_image = Column(Text, nullable=True)
+    author_name = Column(String(120), nullable=True)
+    status = Column(Enum(BlogStatus), default=BlogStatus.DRAFT, nullable=False)
+    is_featured = Column(Boolean, default=False)
+    published_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    key = Column(String(120), nullable=False, unique=True, index=True)
+    value = Column(JSON, nullable=True)
+    description = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
