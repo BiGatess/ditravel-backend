@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models import TicketType
 from app.schemas.ticket_type import TicketTypeCreate, TicketTypeUpdate
+from app.services.product_service import ProductService
 
 class TicketTypeService:
     @staticmethod
@@ -21,6 +22,8 @@ class TicketTypeService:
     async def create(db: AsyncSession, data: TicketTypeCreate):
         new_ticket = TicketType(**data.model_dump())
         db.add(new_ticket)
+        await db.flush()
+        await ProductService.sync_price_from_ticket_types(db, data.product_id)
         await db.commit()
         await db.refresh(new_ticket)
         return new_ticket
@@ -35,6 +38,8 @@ class TicketTypeService:
         for key, value in update_data.items():
             setattr(ticket, key, value)
             
+        await db.flush()
+        await ProductService.sync_price_from_ticket_types(db, ticket.product_id)
         await db.commit()
         await db.refresh(ticket)
         return ticket
@@ -44,7 +49,10 @@ class TicketTypeService:
         ticket = await TicketTypeService.get_by_id(db, ticket_id)
         if not ticket:
             return False
-            
+
+        product_id = ticket.product_id
         await db.delete(ticket)
+        await db.flush()
+        await ProductService.sync_price_from_ticket_types(db, product_id)
         await db.commit()
         return True

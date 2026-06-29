@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -7,6 +8,39 @@ from app.schemas.product import ProductCreate, ProductUpdate
 from app.services.province_service import generate_slug
 
 class ProductService:
+    @staticmethod
+    def _min_price_from_ticket_payload(ticket_types_data) -> Decimal | None:
+        active_prices = [
+            tt.price if hasattr(tt, "price") else tt.get("price")
+            for tt in ticket_types_data
+            if (tt.is_active if hasattr(tt, "is_active") else tt.get("is_active", True))
+        ]
+        return min(active_prices) if active_prices else None
+
+    @staticmethod
+    async def get_min_active_ticket_price(db: AsyncSession, product_id: uuid.UUID) -> Decimal | None:
+        result = await db.execute(
+            select(TicketType.price)
+            .where(TicketType.product_id == product_id, TicketType.is_active == True)
+            .order_by(TicketType.price.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def sync_price_from_ticket_types(
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        fallback_price: Decimal | None = None,
+    ) -> Decimal | None:
+        product = await db.get(Product, product_id)
+        if not product:
+            return None
+
+        min_price = await ProductService.get_min_active_ticket_price(db, product_id)
+        product.price = min_price if min_price is not None else (fallback_price if fallback_price is not None else 0)
+        return product.price
+
     @staticmethod
     async def get_all(db: AsyncSession):
         # Lấy Product kèm theo Place và TicketTypes
@@ -43,6 +77,9 @@ class ProductService:
         # Tách ticket_types ra khỏi product data
         ticket_types_data = data.ticket_types or []
         product_data = data.model_dump(exclude={"ticket_types"})
+        min_ticket_price = ProductService._min_price_from_ticket_payload(ticket_types_data)
+        if min_ticket_price is not None:
+            product_data["price"] = min_ticket_price
         
         new_product = Product(
             **product_data,
@@ -74,6 +111,7 @@ class ProductService:
         
         # Xử lý ticket_types nếu có trong request
         ticket_types_data = update_data.pop("ticket_types", None)
+        fallback_price = update_data.get("price", product.price)
         
         if "title" in update_data:
             update_data["slug"] = generate_slug(update_data["title"])
@@ -100,6 +138,9 @@ class ProductService:
                     is_active=tt_data.get("is_active", True)
                 )
                 db.add(ticket_type)
+
+            await db.flush()
+            await ProductService.sync_price_from_ticket_types(db, product_id, fallback_price=fallback_price)
             
         await db.commit()
         return await ProductService.get_by_id(db, product_id)
