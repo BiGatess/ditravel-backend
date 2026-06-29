@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # SMTP Email Settings (Dùng để gửi mail thật)
     SMTP_EMAIL: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
+
+    # Optional admin bootstrap for hosts without shell access
+    ADMIN_EMAIL: Optional[str] = None
+    ADMIN_PASSWORD: Optional[str] = None
+    ADMIN_NAME: str = "DiTravel Admin"
+    ADMIN_PHONE: Optional[str] = None
     
     # JWT & Security
     SECRET_KEY: str

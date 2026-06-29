@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.admin_bootstrap import bootstrap_admin_from_env
 from app.core.config import settings
 from app.api.auth import router as auth_router
 from app.api.provinces import router as provinces_router
@@ -35,6 +36,10 @@ fastapi_app.include_router(users_router, prefix=f"{settings.API_PREFIX}/users", 
 @fastapi_app.get("/")
 def root():
     return {"message": f"Welcome to {settings.APP_NAME}"}
+
+@fastapi_app.on_event("startup")
+async def bootstrap_admin():
+    await bootstrap_admin_from_env()
 
 # Bọc CORS ngoài cùng để cả response lỗi 500 cũng có header CORS.
 app = CORSMiddleware(
