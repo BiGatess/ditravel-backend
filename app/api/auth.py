@@ -3,10 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.future import select
 from app.db.database import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, get_password_hash, verify_password
 from app.schemas.token import Token
-from app.schemas.user import UserForgotPassword, UserResetPassword, UserCreate, UserResponse
+from app.schemas.user import (
+    UserChangePassword,
+    UserCreate,
+    UserForgotPassword,
+    UserProfileUpdate,
+    UserResetPassword,
+    UserResponse,
+)
 from app.services.auth_service import AuthService
 from app.api.deps import get_current_user
 from app.db.models import User
@@ -79,6 +87,68 @@ async def login_access_token(
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """Lấy thông tin tài khoản hiện tại thông qua Token"""
     return current_user
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_users_me(
+    data: UserProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cập nhật thông tin hồ sơ của tài khoản đang đăng nhập."""
+    payload = data.model_dump(exclude_unset=True)
+
+    if "full_name" in payload:
+        full_name = (payload["full_name"] or "").strip()
+        if not full_name:
+            raise HTTPException(status_code=400, detail="Vui lòng nhập họ và tên")
+        current_user.full_name = full_name
+
+    if "email" in payload and payload["email"]:
+        email = str(payload["email"]).strip().lower()
+        if email != current_user.email:
+            result = await db.execute(
+                select(User).where(User.email == email, User.id != current_user.id)
+            )
+            if result.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Email này đã được sử dụng")
+        current_user.email = email
+
+    if "phone" in payload:
+        phone = (payload["phone"] or "").strip()
+        current_user.phone = phone or None
+
+    if "address" in payload:
+        address = (payload["address"] or "").strip()
+        current_user.address = address or None
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Email này đã được sử dụng")
+
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.post("/change-password")
+async def change_password(
+    data: UserChangePassword,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Đổi mật khẩu cho tài khoản đang đăng nhập."""
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự")
+
+    if not verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác")
+
+    current_user.password_hash = get_password_hash(data.new_password)
+    await db.commit()
+
+    return {"message": "Đổi mật khẩu thành công"}
 
 
 @router.post("/forgot-password")

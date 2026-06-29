@@ -9,6 +9,7 @@ class UserBase(BaseModel):
     email: EmailStr # Pydantic tự động chặn nếu không phải email thật
     full_name: str
     phone: Optional[str] = None
+    address: Optional[str] = None
 
 # Schema dùng khi người dùng đăng ký/tạo tài khoản
 class UserCreate(UserBase):
@@ -33,4 +34,16 @@ class UserForgotPassword(BaseModel):
 class UserResetPassword(BaseModel):
     email: EmailStr
     otp_code: str
+    new_password: str
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+
+class UserChangePassword(BaseModel):
+    current_password: str
     new_password: str
