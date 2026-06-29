@@ -122,6 +122,15 @@ async def update_users_me(
         address = (payload["address"] or "").strip()
         current_user.address = address or None
 
+    if "gender" in payload:
+        gender = (payload["gender"] or "").strip()
+        if gender and gender not in {"male", "female", "other"}:
+            raise HTTPException(status_code=400, detail="Giới tính không hợp lệ")
+        current_user.gender = gender or None
+
+    if "birth_date" in payload:
+        current_user.birth_date = payload["birth_date"]
+
     try:
         await db.commit()
     except IntegrityError:

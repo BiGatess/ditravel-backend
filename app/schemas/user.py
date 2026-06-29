@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from uuid import UUID
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from app.db.models import UserType, UserStatus
 
@@ -10,6 +10,8 @@ class UserBase(BaseModel):
     full_name: str
     phone: Optional[str] = None
     address: Optional[str] = None
+    gender: Optional[str] = None
+    birth_date: Optional[date] = None
 
 # Schema dùng khi người dùng đăng ký/tạo tài khoản
 class UserCreate(UserBase):
@@ -42,6 +44,8 @@ class UserProfileUpdate(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    gender: Optional[str] = None
+    birth_date: Optional[date] = None
 
 
 class UserChangePassword(BaseModel):

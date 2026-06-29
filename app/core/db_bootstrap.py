@@ -11,6 +11,10 @@ def _ensure_user_profile_columns(sync_conn) -> None:
     columns = {column["name"] for column in inspector.get_columns("users")}
     if "address" not in columns:
         sync_conn.execute(text("ALTER TABLE users ADD COLUMN address VARCHAR(255)"))
+    if "gender" not in columns:
+        sync_conn.execute(text("ALTER TABLE users ADD COLUMN gender VARCHAR(20)"))
+    if "birth_date" not in columns:
+        sync_conn.execute(text("ALTER TABLE users ADD COLUMN birth_date DATE"))
 
 
 async def create_missing_tables() -> None:
