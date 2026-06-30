@@ -1,6 +1,6 @@
-from typing import List
+from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -10,6 +10,20 @@ from app.db.models import SystemSetting, User
 from app.schemas.setting import SystemSettingCreate, SystemSettingResponse, SystemSettingUpdate
 
 router = APIRouter()
+
+
+@router.get("/public")
+async def get_public_settings(
+    keys: str = Query(..., description="Comma-separated setting keys"),
+    db: AsyncSession = Depends(get_db),
+):
+    key_list = [key.strip() for key in keys.split(",") if key.strip()]
+    if not key_list:
+        return {}
+
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key.in_(key_list)))
+    settings = result.scalars().all()
+    return {setting.key: setting.value for setting in settings}
 
 
 @router.get("/", response_model=List[SystemSettingResponse])
