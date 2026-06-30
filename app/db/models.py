@@ -286,3 +286,22 @@ class SystemSetting(Base):
     value = Column(JSON, nullable=True)
     description = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PaymentWebhookEvent(Base):
+    __tablename__ = "payment_webhook_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    reference_code = Column(String(255), nullable=False, unique=True, index=True)
+    provider = Column(String(50), nullable=False, default="SEPAY")
+    amount = Column(Numeric(14, 2), nullable=True)
+    content = Column(Text, nullable=True)
+    bank_code = Column(String(32), nullable=True)
+    account_number = Column(String(64), nullable=True)
+    account_name = Column(String(150), nullable=True)
+    status = Column(String(50), nullable=False, default="SUCCESS")
+    transaction_time = Column(DateTime, nullable=True)
+    raw_payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

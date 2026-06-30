@@ -15,6 +15,7 @@ from app.api.reviews import router as reviews_router
 from app.api.vouchers import router as vouchers_router
 from app.api.blogs import router as blogs_router
 from app.api.settings import router as settings_router
+from app.api.sepay import router as sepay_router
 
 fastapi_app = FastAPI(
     title=settings.APP_NAME,
@@ -43,6 +44,7 @@ fastapi_app.include_router(reviews_router, prefix=f"{settings.API_PREFIX}/review
 fastapi_app.include_router(vouchers_router, prefix=f"{settings.API_PREFIX}/vouchers", tags=["Vouchers"])
 fastapi_app.include_router(blogs_router, prefix=f"{settings.API_PREFIX}/blogs", tags=["Blogs"])
 fastapi_app.include_router(settings_router, prefix=f"{settings.API_PREFIX}/settings", tags=["Settings"])
+fastapi_app.include_router(sepay_router, prefix=f"{settings.API_PREFIX}/sepay", tags=["SePay"])
 
 @fastapi_app.get("/")
 def root():
