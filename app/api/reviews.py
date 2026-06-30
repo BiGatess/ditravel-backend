@@ -47,14 +47,16 @@ async def list_public_product_reviews(product_id: UUID, db: AsyncSession = Depen
 async def create_review(
     data: ReviewCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
 ):
     if data.product_id:
         product = await db.get(Product, data.product_id)
         if not product:
             raise HTTPException(status_code=400, detail="Product does not exist")
 
-    review = Review(**data.model_dump())
+    payload = data.model_dump()
+    payload["status"] = ReviewStatus.PENDING
+    payload["admin_reply"] = None
+    review = Review(**payload)
     db.add(review)
     await db.commit()
     await db.refresh(review)
