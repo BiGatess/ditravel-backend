@@ -32,7 +32,8 @@ class BannerService:
         next_order = (last_banner.order + 1) if last_banner else 0
 
         db_banner = Banner(**banner_data.model_dump())
-        db_banner.order = next_order
+        requested_order = banner_data.order or 0
+        db_banner.order = requested_order if requested_order > 0 else next_order
         db.add(db_banner)
         await db.commit()
         await db.refresh(db_banner)
