@@ -44,7 +44,7 @@ fastapi_app.include_router(reviews_router, prefix=f"{settings.API_PREFIX}/review
 fastapi_app.include_router(vouchers_router, prefix=f"{settings.API_PREFIX}/vouchers", tags=["Vouchers"])
 fastapi_app.include_router(blogs_router, prefix=f"{settings.API_PREFIX}/blogs", tags=["Blogs"])
 fastapi_app.include_router(settings_router, prefix=f"{settings.API_PREFIX}/settings", tags=["Settings"])
-fastapi_app.include_router(sepay_router, prefix=f"{settings.API_PREFIX}/sepay", tags=["SePay"])
+fastapi_app.include_router(sepay_router, prefix=f"{settings.API_PREFIX}/payments/sepay", tags=["SePay"])
 
 @fastapi_app.get("/")
 def root():
