@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
+from app.core.currency import normalize_vnd_price
 from .ticket_type import TicketTypeResponse, TicketTypeInline
 
 # Giả sử chúng ta muốn trả về tên Place cùng với Product
@@ -33,6 +34,11 @@ class ProductBase(BaseModel):
     category: Optional[str] = "TOUR"
     is_featured: bool = False
     is_active: bool = True
+
+    @field_validator("price", mode="before")
+    @classmethod
+    def normalize_price(cls, value):
+        return normalize_vnd_price(value)
 
 class ProductCreate(ProductBase):
     ticket_types: Optional[List[TicketTypeInline]] = []

@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from decimal import Decimal
+from app.core.currency import normalize_vnd_price
 
 class TicketTypeBase(BaseModel):
     name: str
@@ -12,6 +13,11 @@ class TicketTypeBase(BaseModel):
     min_quantity: int = 1
     max_quantity: int = 10
     is_active: bool = True
+
+    @field_validator("price", "original_price", mode="before")
+    @classmethod
+    def normalize_prices(cls, value):
+        return normalize_vnd_price(value)
 
 class TicketTypeCreate(TicketTypeBase):
     product_id: UUID
@@ -26,6 +32,11 @@ class TicketTypeInline(BaseModel):
     max_quantity: int = 10
     is_active: bool = True
 
+    @field_validator("price", "original_price", mode="before")
+    @classmethod
+    def normalize_prices(cls, value):
+        return normalize_vnd_price(value)
+
 class TicketTypeUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -34,6 +45,11 @@ class TicketTypeUpdate(BaseModel):
     min_quantity: Optional[int] = None
     max_quantity: Optional[int] = None
     is_active: Optional[bool] = None
+
+    @field_validator("price", "original_price", mode="before")
+    @classmethod
+    def normalize_prices(cls, value):
+        return normalize_vnd_price(value)
 
 class TicketTypeResponse(TicketTypeBase):
     id: UUID

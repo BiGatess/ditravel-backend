@@ -3,8 +3,9 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
+from app.core.currency import normalize_vnd_price
 from app.db.models import PricingStatus
 
 
@@ -18,6 +19,11 @@ class PricingRuleBase(BaseModel):
     status: PricingStatus = PricingStatus.OPEN
     note: Optional[str] = None
 
+    @field_validator("price", "original_price", mode="before")
+    @classmethod
+    def normalize_prices(cls, value):
+        return normalize_vnd_price(value)
+
 
 class PricingRuleCreate(PricingRuleBase):
     pass
@@ -29,6 +35,11 @@ class PricingRuleUpdate(BaseModel):
     stock: Optional[int] = None
     status: Optional[PricingStatus] = None
     note: Optional[str] = None
+
+    @field_validator("price", "original_price", mode="before")
+    @classmethod
+    def normalize_prices(cls, value):
+        return normalize_vnd_price(value)
 
 
 class PricingBulkUpsert(BaseModel):
