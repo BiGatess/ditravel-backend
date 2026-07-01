@@ -1,50 +1,127 @@
+﻿import asyncio
 import random
 import string
-import asyncio
 import time
 from datetime import datetime, timedelta
+from html import escape as html_escape
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.db.models import User, PasswordResetToken
-from app.core.security import verify_password, get_password_hash
-from app.core.config import settings
 
-# --- MÔ PHỎNG REDIS CHO MÔI TRƯỜNG CODE ---
-# Vì máy bạn chưa cài phần mềm Redis thật, tôi sẽ dùng bộ nhớ tạm của Python 
-# để mô phỏng y hệt tính năng tự huỷ sau 90 giây của Redis để bạn test.
-# Khi nào deploy lên máy chủ thật, mình sẽ bật kết nối Redis lại!
+from app.core.config import settings
+from app.core.security import get_password_hash, verify_password
+from app.db.models import PasswordResetToken, User
+
+
 class MockRedis:
     def __init__(self):
         self.data = {}
-    
+
     async def setex(self, key, seconds, value):
         expire_at = time.time() + seconds
         self.data[key] = {"value": value, "expire_at": expire_at}
-        
+
     async def get(self, key):
         if key in self.data:
             if time.time() > self.data[key]["expire_at"]:
-                del self.data[key] # Đã hết hạn thì xoá
+                del self.data[key]
                 return None
             return self.data[key]["value"]
         return None
-        
+
     async def delete(self, key):
         if key in self.data:
             del self.data[key]
 
+
 redis_client = MockRedis()
-# ------------------------------------------
+
+OTP_EXPIRY_SECONDS = 24 * 60 * 60
+OTP_EXPIRY_HOURS = 24
+
+
+def generate_forgot_password_email(userEmail: str, otpCode: str) -> str:
+    safe_email = html_escape(userEmail or "")
+    safe_otp = html_escape(otpCode or "")
+
+    return f"""<!DOCTYPE html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"UTF-8\" />
+    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+    <title>Help us protect your account</title>
+  </head>
+  <body style=\"margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;\">
+    <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f5f5f5;padding:40px 16px;\">
+      <tr>
+        <td align=\"center\">
+          <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;\">
+            <tr>
+              <td style=\"padding:40px 36px 28px 36px;\">
+                <div style=\"text-align:center;\">
+                  <h1 style=\"margin:0;font-size:26px;line-height:1.3;font-weight:700;color:#111827;\">
+                    Help us protect your account
+                  </h1>
+                  <div style=\"width:88px;height:3px;background:#8e44dd;margin:14px auto 0;border-radius:999px;\"></div>
+                </div>
+
+                <p style=\"margin:28px 0 0 0;font-size:15px;line-height:1.7;color:#374151;\">
+                  Hi <strong style=\"color:#111827;\">{safe_email}</strong>,
+                </p>
+
+                <p style=\"margin:14px 0 0 0;font-size:15px;line-height:1.7;color:#374151;\">
+                  We received a request to reset your password for your DI Travel account.
+                  Use the verification code below to continue:
+                </p>
+
+                <div style=\"margin:28px 0 24px 0;padding:18px 16px;background:#8e44dd;border-radius:12px;text-align:center;\">
+                  <div style=\"font-size:12px;line-height:1.4;color:rgba(255,255,255,0.85);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:10px;\">
+                    Your OTP Code
+                  </div>
+                  <div style=\"font-size:34px;line-height:1.2;font-weight:800;letter-spacing:8px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;\">
+                    {safe_otp}
+                  </div>
+                </div>
+
+                <p style=\"margin:0;font-size:14px;line-height:1.7;color:#6b7280;\">
+                  This code will expire after <strong style=\"color:#111827;\">{OTP_EXPIRY_HOURS} hours</strong>.
+                </p>
+
+                <p style=\"margin:10px 0 0 0;font-size:14px;line-height:1.7;color:#6b7280;\">
+                  If you did not request this change, you can safely ignore this email.
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style=\"padding:18px 36px 30px 36px;border-top:1px solid #ececec;background:#ffffff;\">
+                <p style=\"margin:0;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center;\">
+                  No-reply: no-reply@ditravel.com<br />
+                  DI Travel, Vietnam<br />
+                  Copyright 2026 DI Travel. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+
+def generateForgotPasswordEmail(userEmail: str, otpCode: str) -> str:
+    return generate_forgot_password_email(userEmail, otpCode)
+
 
 class AuthService:
-    
     @staticmethod
     async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | None:
-        """Kiểm tra đăng nhập"""
         query = select(User).where(User.email == email)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
-        
+
         if not user:
             return None
         if not verify_password(password, user.password_hash):
@@ -53,110 +130,104 @@ class AuthService:
 
     @staticmethod
     async def generate_and_send_otp(db: AsyncSession, email: str) -> bool:
-        """Tạo mã OTP, lưu vào Redis 90s và gửi Email"""
-        # 1. Tìm user
         query = select(User).where(User.email == email)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
-        
+
         if not user:
-            return False # Không báo lỗi rõ ràng để chống hacker dò email
-            
-        # 2. Tạo mã OTP 6 số ngẫu nhiên
+            return False
+
         otp_code = ''.join(random.choices(string.digits, k=6))
-        
-        # 3. Lưu vào Redis với hạn 90 GIÂY
+
         redis_key = f"reset_otp:{email}"
-        await redis_client.setex(redis_key, 90, otp_code)
-        
-        # 4. Lưu log vào Database (để đối soát nếu cần)
+        await redis_client.setex(redis_key, OTP_EXPIRY_SECONDS, otp_code)
+
         hashed_otp = get_password_hash(otp_code)
-        expires_at = datetime.utcnow() + timedelta(seconds=90)
+        expires_at = datetime.utcnow() + timedelta(seconds=OTP_EXPIRY_SECONDS)
         reset_token = PasswordResetToken(
             user_id=user.id,
             email=email,
             otp_code=hashed_otp,
-            expires_at=expires_at
+            expires_at=expires_at,
         )
         db.add(reset_token)
         await db.commit()
-        
-        # 5. Gửi Email (Chạy nền không làm chậm API)
+
         asyncio.create_task(AuthService._send_email_async(email, otp_code))
-        
         return True
 
     @staticmethod
     async def reset_password_with_otp(db: AsyncSession, email: str, otp_code: str, new_password: str) -> bool:
-        """Kiểm tra OTP và Đổi mật khẩu"""
-        # 1. Kiểm tra OTP trên Redis (90s)
         redis_key = f"reset_otp:{email}"
         saved_otp = await redis_client.get(redis_key)
-        
+
         if not saved_otp or saved_otp != otp_code:
-            return False # Mã sai hoặc đã hết hạn (bị xoá khỏi Redis)
-            
-        # 2. OTP đúng, tiến hành đổi mật khẩu
+            return False
+
         query = select(User).where(User.email == email)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
-        
+
         if user:
             user.password_hash = get_password_hash(new_password)
-            # Cập nhật db log (is_used = True)
+
             token_query = select(PasswordResetToken).where(
                 PasswordResetToken.email == email,
-                PasswordResetToken.is_used == False
+                PasswordResetToken.is_used.is_(False),
             ).order_by(PasswordResetToken.created_at.desc())
             token_result = await db.execute(token_query)
             token_log = token_result.scalars().first()
             if token_log:
                 token_log.is_used = True
-            
+
             await db.commit()
-            
-            # Xoá mã OTP khỏi Redis ngay lập tức (không cho dùng lại)
             await redis_client.delete(redis_key)
             return True
-            
+
         return False
 
     @staticmethod
     async def _send_email_async(to_email: str, otp_code: str):
-        """Hàm gửi Email thật bằng Gmail SMTP (chạy trên thread riêng để không block API)"""
         import smtplib
-        from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
 
         def send_email_sync():
-            # Nếu chưa cấu hình email trong .env thì vẫn in ra Terminal như cũ
             if not settings.SMTP_EMAIL or not settings.SMTP_PASSWORD:
                 print("==================================================")
-                print(f"📧 CHƯA CÓ EMAIL TRONG .ENV. ĐANG IN GIẢ LẬP GỬI ĐẾN: {to_email}")
-                print(f"🔑 MÃ OTP CỦA BẠN LÀ: {otp_code}")
-                print(f"⏳ Cảnh báo: Mã sẽ tự huỷ sau 90 giây!")
+                print(f"[mail] SMTP not configured. Mock send to: {to_email}")
+                print(f"[mail] OTP: {otp_code}")
+                print(f"[mail] Code expires after {OTP_EXPIRY_HOURS} hours")
                 print("==================================================")
                 return
 
-            msg = MIMEMultipart()
-            # Đổi tên người gửi hiển thị ở đây (VD: DiTravel Support)
-            msg['From'] = f"Hỗ trợ DiTravel <{settings.SMTP_EMAIL}>"
-            msg['To'] = to_email
-            msg['Subject'] = "Mã xác nhận quên mật khẩu - DiTravel"
-            
-            body = f"Xin chào,\n\nMã OTP của bạn là: {otp_code}.\n\nMã này sẽ tự động hết hạn sau 90 giây.\nVui lòng không chia sẻ mã này cho bất kỳ ai.\n\nTrân trọng,\nĐội ngũ DiTravel."
-            msg.attach(MIMEText(body, 'plain'))
-            
+            msg = MIMEMultipart("alternative")
+            msg["From"] = f"DiTravel Support <{settings.SMTP_EMAIL}>"
+            msg["To"] = to_email
+            msg["Subject"] = "Help us protect your account"
+
+            text_body = (
+                f"Hi {to_email},\n\n"
+                f"Your DI Travel verification code is: {otp_code}\n\n"
+                f"This code expires after {OTP_EXPIRY_HOURS} hours.\n"
+                "If you did not request this, you can ignore this email.\n\n"
+                "No-reply: no-reply@ditravel.com\n"
+                "DI Travel, Vietnam\n"
+                "Copyright 2026 DI Travel. All rights reserved."
+            )
+            html_body = generate_forgot_password_email(to_email, otp_code)
+
+            msg.attach(MIMEText(text_body, "plain", "utf-8"))
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
             try:
-                # Kết nối máy chủ Gmail
-                server = smtplib.SMTP('smtp.gmail.com', 587)
+                server = smtplib.SMTP("smtp.gmail.com", 587)
                 server.starttls()
                 server.login(settings.SMTP_EMAIL, settings.SMTP_PASSWORD)
                 server.send_message(msg)
                 server.quit()
-                print(f"✅ Đã gửi email OTP thành công tới: {to_email}")
+                print(f"[mail] OTP email sent successfully to: {to_email}")
             except Exception as e:
-                print(f"❌ Lỗi gửi email: {e}")
+                print(f"[mail] Failed to send email: {e}")
 
-        # Chạy hàm đồng bộ trên một thread riêng để không làm treo hệ thống Async
         await asyncio.to_thread(send_email_sync)
