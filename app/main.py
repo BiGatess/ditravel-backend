@@ -14,6 +14,7 @@ from app.api.pricing import router as pricing_router
 from app.api.reviews import router as reviews_router
 from app.api.vouchers import router as vouchers_router
 from app.api.blogs import router as blogs_router
+from app.api.orders import router as orders_router
 from app.api.settings import router as settings_router
 from app.api.sepay import router as sepay_router
 
@@ -43,6 +44,7 @@ fastapi_app.include_router(pricing_router, prefix=f"{settings.API_PREFIX}/pricin
 fastapi_app.include_router(reviews_router, prefix=f"{settings.API_PREFIX}/reviews", tags=["Reviews"])
 fastapi_app.include_router(vouchers_router, prefix=f"{settings.API_PREFIX}/vouchers", tags=["Vouchers"])
 fastapi_app.include_router(blogs_router, prefix=f"{settings.API_PREFIX}/blogs", tags=["Blogs"])
+fastapi_app.include_router(orders_router, prefix=f"{settings.API_PREFIX}/orders", tags=["Orders"])
 fastapi_app.include_router(settings_router, prefix=f"{settings.API_PREFIX}/settings", tags=["Settings"])
 fastapi_app.include_router(sepay_router, prefix=f"{settings.API_PREFIX}/payments/sepay", tags=["SePay"])
 

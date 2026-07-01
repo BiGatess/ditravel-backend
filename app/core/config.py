@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     SMTP_EMAIL: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
 
+    # SePay Settings
+    SEPAY_WEBHOOK_SECRET: Optional[str] = None
+    SEPAY_API_TOKEN: Optional[str] = None
+
     # Optional admin bootstrap for hosts without shell access
     ADMIN_EMAIL: Optional[str] = None
     ADMIN_PASSWORD: Optional[str] = None

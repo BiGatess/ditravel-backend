@@ -44,6 +44,22 @@ class BlogStatus(str, enum.Enum):
     PUBLISHED = "PUBLISHED"
     ARCHIVED = "ARCHIVED"
 
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PAID = "PAID"
+    FAILED = "FAILED"
+    REFUNDED = "REFUNDED"
+    CANCELLED = "CANCELLED"
+
+
+class OrderStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PAID = "PAID"
+    CONFIRMED = "CONFIRMED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
 # === 1. BẢNG USERS (Người dùng & Admin) ===
 class User(Base):
     __tablename__ = "users"
@@ -278,6 +294,35 @@ class BlogPost(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    order_code = Column(String(50), nullable=False, unique=True, index=True)
+    payment_code = Column(String(50), nullable=True, unique=True, index=True)
+
+    customer_name = Column(String(120), nullable=False)
+    customer_phone = Column(String(30), nullable=False)
+    customer_email = Column(String(150), nullable=False)
+    customer_address = Column(String(255), nullable=True)
+
+    items = Column(JSON, nullable=False)
+    total_amount = Column(Numeric(14, 2), nullable=False, default=0)
+
+    payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
+    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
+    payment_method = Column(String(50), default="SEPAY", nullable=False)
+
+    paid_at = Column(DateTime, nullable=True)
+    sepay_transaction_id = Column(String(255), nullable=True, unique=True, index=True)
+    sepay_reference_code = Column(String(255), nullable=True, unique=True, index=True)
+    sepay_content = Column(Text, nullable=True)
+    sepay_raw_payload = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
@@ -293,6 +338,8 @@ class PaymentWebhookEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     reference_code = Column(String(255), nullable=False, unique=True, index=True)
+    transaction_id = Column(String(255), nullable=True, unique=True, index=True)
+    order_code = Column(String(50), nullable=True, index=True)
     provider = Column(String(50), nullable=False, default="SEPAY")
     amount = Column(Numeric(14, 2), nullable=True)
     content = Column(Text, nullable=True)
