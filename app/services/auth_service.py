@@ -156,8 +156,7 @@ class AuthService:
         db.add(reset_token)
         await db.commit()
 
-        asyncio.create_task(AuthService._send_email_async(email, otp_code))
-        return True
+        return await AuthService._send_email_async(email, otp_code)
 
     @staticmethod
     async def verify_reset_otp(db: AsyncSession, email: str, otp_code: str) -> str | None:
@@ -226,7 +225,7 @@ class AuthService:
         return await AuthService.reset_password_with_token(db, reset_token=reset_token, new_password=new_password)
 
     @staticmethod
-    async def _send_email_async(to_email: str, otp_code: str):
+    async def _send_email_async(to_email: str, otp_code: str) -> bool:
         import smtplib
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
@@ -238,7 +237,7 @@ class AuthService:
                 print(f"[mail] OTP: {otp_code}")
                 print(f"[mail] Code expires after {OTP_EXPIRY_LABEL}")
                 print("==================================================")
-                return
+                return False
 
             msg = MIMEMultipart("alternative")
             msg["From"] = f"DiTravel Support <{settings.SMTP_EMAIL}>"
@@ -260,13 +259,15 @@ class AuthService:
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
             try:
-                server = smtplib.SMTP("smtp.gmail.com", 587)
+                server = smtplib.SMTP("smtp.gmail.com", 587, timeout=20)
                 server.starttls()
                 server.login(settings.SMTP_EMAIL, settings.SMTP_PASSWORD)
                 server.send_message(msg)
                 server.quit()
                 print(f"[mail] OTP email sent successfully to: {to_email}")
+                return True
             except Exception as e:
                 print(f"[mail] Failed to send email: {e}")
+                return False
 
-        await asyncio.to_thread(send_email_sync)
+        return await asyncio.to_thread(send_email_sync)

@@ -146,7 +146,12 @@ async def change_password(
 
 @router.post("/forgot-password")
 async def forgot_password(data: UserForgotPassword, db: AsyncSession = Depends(get_db)):
-    await AuthService.generate_and_send_otp(db, email=data.email)
+    success = await AuthService.generate_and_send_otp(db, email=data.email)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không gửi được email OTP. Kiểm tra SMTP_EMAIL / SMTP_PASSWORD trên Render hoặc email người dùng.",
+        )
     return {"message": "Nếu email hợp lệ, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư."}
 
 
