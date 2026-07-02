@@ -1,46 +1,24 @@
 import asyncio
-import json
 import random
 import secrets
 import string
-import time
 from datetime import datetime, timedelta
 from html import escape as html_escape
 
+import resend
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.db.models import PasswordResetToken, User
 
 
-class MockRedis:
-    def __init__(self):
-        self.data = {}
-
-    async def setex(self, key, seconds, value):
-        expire_at = time.time() + seconds
-        self.data[key] = {"value": value, "expire_at": expire_at}
-
-    async def get(self, key):
-        if key in self.data:
-            if time.time() > self.data[key]["expire_at"]:
-                del self.data[key]
-                return None
-            return self.data[key]["value"]
-        return None
-
-    async def delete(self, key):
-        if key in self.data:
-            del self.data[key]
-
-
-redis_client = MockRedis()
-
-OTP_EXPIRY_SECONDS = 60
-OTP_EXPIRY_LABEL = "60 giây"
-RESET_SESSION_EXPIRY_SECONDS = 10 * 60
+OTP_EXPIRY_SECONDS = 5 * 60
+OTP_EXPIRY_LABEL = "5 phút"
+RESET_TOKEN_EXPIRY_SECONDS = 10 * 60
+MAX_OTP_ATTEMPTS = 5
 
 
 def generate_forgot_password_email(userEmail: str, otpCode: str) -> str:
@@ -121,7 +99,8 @@ def generateForgotPasswordEmail(userEmail: str, otpCode: str) -> str:
 class AuthService:
     @staticmethod
     async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | None:
-        query = select(User).where(User.email == email)
+        normalized_email = (email or "").strip().lower()
+        query = select(User).where(func.lower(User.email) == normalized_email)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
 
@@ -133,89 +112,98 @@ class AuthService:
 
     @staticmethod
     async def generate_and_send_otp(db: AsyncSession, email: str) -> bool:
-        query = select(User).where(User.email == email)
+        normalized_email = (email or "").strip().lower()
+
+        query = select(User).where(func.lower(User.email) == normalized_email)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
 
         if not user:
-            return False
+            return True
 
         otp_code = "".join(random.choices(string.digits, k=6))
-
-        redis_key = f"reset_otp:{email}"
-        await redis_client.setex(redis_key, OTP_EXPIRY_SECONDS, otp_code)
-
         hashed_otp = get_password_hash(otp_code)
         expires_at = datetime.utcnow() + timedelta(seconds=OTP_EXPIRY_SECONDS)
-        reset_token = PasswordResetToken(
+
+        reset_entry = PasswordResetToken(
             user_id=user.id,
-            email=email,
+            email=normalized_email,
             otp_code=hashed_otp,
             expires_at=expires_at,
+            attempts=0,
+            is_used=False,
+            reset_token=None,
+            reset_token_expires_at=None,
         )
-        db.add(reset_token)
+        db.add(reset_entry)
         await db.commit()
 
-        return await AuthService._send_email_async(email, otp_code)
+        return await AuthService._send_otp_email(normalized_email, otp_code)
 
     @staticmethod
     async def verify_reset_otp(db: AsyncSession, email: str, otp_code: str) -> str | None:
-        redis_key = f"reset_otp:{email}"
-        saved_otp = await redis_client.get(redis_key)
+        normalized_email = (email or "").strip().lower()
 
-        if not saved_otp or saved_otp != otp_code:
+        query = (
+            select(PasswordResetToken)
+            .where(
+                func.lower(PasswordResetToken.email) == normalized_email,
+                PasswordResetToken.is_used.is_(False),
+                PasswordResetToken.expires_at > datetime.utcnow(),
+            )
+            .order_by(PasswordResetToken.created_at.desc())
+        )
+        result = await db.execute(query)
+        token_row = result.scalars().first()
+
+        if not token_row:
+            return None
+
+        attempts = token_row.attempts or 0
+        if attempts >= MAX_OTP_ATTEMPTS:
+            return None
+
+        if not verify_password(otp_code, token_row.otp_code):
+            token_row.attempts = attempts + 1
+            await db.commit()
             return None
 
         reset_token = secrets.token_urlsafe(32)
-        session_key = f"reset_session:{reset_token}"
-        session_value = json.dumps(
-            {
-                "email": email,
-                "verified_at": datetime.utcnow().isoformat(),
-            }
-        )
-        await redis_client.setex(session_key, RESET_SESSION_EXPIRY_SECONDS, session_value)
+        token_row.is_used = True
+        token_row.reset_token = reset_token
+        token_row.reset_token_expires_at = datetime.utcnow() + timedelta(seconds=RESET_TOKEN_EXPIRY_SECONDS)
+        await db.commit()
         return reset_token
 
     @staticmethod
     async def reset_password_with_token(db: AsyncSession, reset_token: str, new_password: str) -> bool:
-        session_key = f"reset_session:{reset_token}"
-        session_data = await redis_client.get(session_key)
-
-        if not session_data:
+        token_value = (reset_token or "").strip()
+        if not token_value:
             return False
 
-        try:
-            payload = json.loads(session_data)
-        except (TypeError, json.JSONDecodeError):
-            return False
-
-        email = payload.get("email")
-        if not email:
-            return False
-
-        query = select(User).where(User.email == email)
+        query = select(PasswordResetToken).where(
+            PasswordResetToken.reset_token == token_value,
+            PasswordResetToken.is_used.is_(True),
+            PasswordResetToken.reset_token_expires_at > datetime.utcnow(),
+        )
         result = await db.execute(query)
-        user = result.scalar_one_or_none()
+        token_row = result.scalars().first()
 
-        if user:
-            user.password_hash = get_password_hash(new_password)
+        if not token_row:
+            return False
 
-            token_query = select(PasswordResetToken).where(
-                PasswordResetToken.email == email,
-                PasswordResetToken.is_used.is_(False),
-            ).order_by(PasswordResetToken.created_at.desc())
-            token_result = await db.execute(token_query)
-            token_log = token_result.scalars().first()
-            if token_log:
-                token_log.is_used = True
+        user_query = select(User).where(User.id == token_row.user_id)
+        user_result = await db.execute(user_query)
+        user = user_result.scalar_one_or_none()
 
-            await db.commit()
-            await redis_client.delete(f"reset_otp:{email}")
-            await redis_client.delete(session_key)
-            return True
+        if not user:
+            return False
 
-        return False
+        user.password_hash = get_password_hash(new_password)
+        token_row.reset_token = None
+        token_row.reset_token_expires_at = None
+        await db.commit()
+        return True
 
     @staticmethod
     async def reset_password_with_otp(db: AsyncSession, email: str, otp_code: str, new_password: str) -> bool:
@@ -225,25 +213,13 @@ class AuthService:
         return await AuthService.reset_password_with_token(db, reset_token=reset_token, new_password=new_password)
 
     @staticmethod
-    async def _send_email_async(to_email: str, otp_code: str) -> bool:
-        import smtplib
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
+    async def _send_otp_email(to_email: str, otp_code: str) -> bool:
+        if not settings.RESEND_API_KEY or not settings.EMAIL_FROM:
+            return False
 
-        def send_email_sync():
-            if not settings.SMTP_EMAIL or not settings.SMTP_PASSWORD:
-                print("==================================================")
-                print(f"[mail] SMTP not configured. Mock send to: {to_email}")
-                print(f"[mail] OTP: {otp_code}")
-                print(f"[mail] Code expires after {OTP_EXPIRY_LABEL}")
-                print("==================================================")
-                return False
-
-            msg = MIMEMultipart("alternative")
-            msg["From"] = f"DiTravel Support <{settings.SMTP_EMAIL}>"
-            msg["To"] = to_email
-            msg["Subject"] = "Help us protect your account"
-
+        def send_email_sync() -> bool:
+            resend.api_key = settings.RESEND_API_KEY
+            html_body = generate_forgot_password_email(to_email, otp_code)
             text_body = (
                 f"Hi {to_email},\n\n"
                 f"Your DI Travel verification code is: {otp_code}\n\n"
@@ -253,21 +229,20 @@ class AuthService:
                 "DI Travel, Vietnam\n"
                 "Copyright 2026 DI Travel. All rights reserved."
             )
-            html_body = generate_forgot_password_email(to_email, otp_code)
-
-            msg.attach(MIMEText(text_body, "plain", "utf-8"))
-            msg.attach(MIMEText(html_body, "html", "utf-8"))
 
             try:
-                server = smtplib.SMTP("smtp.gmail.com", 587, timeout=20)
-                server.starttls()
-                server.login(settings.SMTP_EMAIL, settings.SMTP_PASSWORD)
-                server.send_message(msg)
-                server.quit()
-                print(f"[mail] OTP email sent successfully to: {to_email}")
+                resend.Emails.send(
+                    {
+                        "from": settings.EMAIL_FROM,
+                        "to": [to_email],
+                        "subject": "Help us protect your account",
+                        "html": html_body,
+                        "text": text_body,
+                    }
+                )
                 return True
-            except Exception as e:
-                print(f"[mail] Failed to send email: {e}")
+            except Exception as exc:
+                print(f"[mail] Failed to send email via Resend: {exc}")
                 return False
 
         return await asyncio.to_thread(send_email_sync)

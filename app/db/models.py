@@ -93,7 +93,10 @@ class PasswordResetToken(Base):
     email = Column(String(150), nullable=False)
     otp_code = Column(String(255), nullable=False) # Lưu dạng hash để bảo mật
     expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
     is_used = Column(Boolean, default=False)
+    reset_token = Column(String(255), nullable=True, unique=True, index=True)
+    reset_token_expires_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
 

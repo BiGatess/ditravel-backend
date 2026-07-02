@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     # Database Settings
     DATABASE_URL: str
     
-    # SMTP Email Settings (Dùng để gửi mail thật)
-    SMTP_EMAIL: Optional[str] = None
-    SMTP_PASSWORD: Optional[str] = None
+    # Email delivery via Resend
+    RESEND_API_KEY: Optional[str] = None
+    EMAIL_FROM: Optional[str] = None
 
     # SePay Settings
     SEPAY_WEBHOOK_SECRET: Optional[str] = None

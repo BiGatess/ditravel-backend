@@ -36,11 +36,33 @@ def _ensure_payment_webhook_event_columns(sync_conn) -> None:
     ))
 
 
+def _ensure_password_reset_token_columns(sync_conn) -> None:
+    inspector = inspect(sync_conn)
+    if "password_reset_tokens" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("password_reset_tokens")}
+    if "attempts" not in columns:
+        sync_conn.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"))
+    else:
+        sync_conn.execute(text("UPDATE password_reset_tokens SET attempts = 0 WHERE attempts IS NULL"))
+    if "reset_token" not in columns:
+        sync_conn.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN reset_token VARCHAR(255)"))
+    if "reset_token_expires_at" not in columns:
+        sync_conn.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN reset_token_expires_at TIMESTAMP"))
+
+    sync_conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_password_reset_tokens_reset_token "
+        "ON password_reset_tokens (reset_token)"
+    ))
+
+
 async def create_missing_tables() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_user_profile_columns)
         await conn.run_sync(_ensure_payment_webhook_event_columns)
+        await conn.run_sync(_ensure_password_reset_token_columns)
 
     default_settings = {
         "sepay.enabled": (True, ["", None], "Bật/tắt SePay trong checkout"),

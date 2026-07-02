@@ -150,7 +150,7 @@ async def forgot_password(data: UserForgotPassword, db: AsyncSession = Depends(g
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không gửi được email OTP. Kiểm tra SMTP_EMAIL / SMTP_PASSWORD trên Render hoặc email người dùng.",
+            detail="Không gửi được email OTP. Kiểm tra RESEND_API_KEY / EMAIL_FROM trên Render.",
         )
     return {"message": "Nếu email hợp lệ, mã OTP đã được gửi. Vui lòng kiểm tra hộp thư."}
 
@@ -172,24 +172,14 @@ async def verify_reset_otp(data: UserVerifyResetOtp, db: AsyncSession = Depends(
 
 @router.post("/reset-password")
 async def reset_password(data: UserResetPassword, db: AsyncSession = Depends(get_db)):
-    if data.reset_token:
-        success = await AuthService.reset_password_with_token(
-            db, reset_token=data.reset_token, new_password=data.new_password
-        )
-    elif data.email and data.otp_code:
-        success = await AuthService.reset_password_with_otp(
-            db, email=data.email, otp_code=data.otp_code, new_password=data.new_password
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Thiếu thông tin xác minh để đổi mật khẩu.",
-        )
+    success = await AuthService.reset_password_with_token(
+        db, reset_token=data.reset_token, new_password=data.new_password
+    )
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mã OTP không chính xác hoặc đã hết hạn (60 giây).",
+            detail="Mã xác minh không hợp lệ hoặc đã hết hạn.",
         )
 
     return {"message": "Đổi mật khẩu thành công!"}

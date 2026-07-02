@@ -38,9 +38,7 @@ class UserVerifyResetOtp(BaseModel):
 
 
 class UserResetPassword(BaseModel):
-    reset_token: Optional[str] = None
-    email: Optional[EmailStr] = None
-    otp_code: Optional[str] = None
+    reset_token: str
     new_password: str
 
 
