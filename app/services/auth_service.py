@@ -15,8 +15,8 @@ from app.core.security import get_password_hash, verify_password
 from app.db.models import PasswordResetToken, User
 
 
-OTP_EXPIRY_SECONDS = 5 * 60
-OTP_EXPIRY_LABEL = "5 phút"
+OTP_EXPIRY_SECONDS = 60
+OTP_EXPIRY_LABEL = "60 giây"
 RESET_TOKEN_EXPIRY_SECONDS = 10 * 60
 MAX_OTP_ATTEMPTS = 5
 
