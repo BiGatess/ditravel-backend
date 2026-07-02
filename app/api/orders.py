@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin
+from app.api.deps import get_current_admin, get_current_user
 from app.db.database import get_db
 from app.db.models import Order, OrderStatus, PaymentStatus, User
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
@@ -76,6 +76,22 @@ async def list_orders(
             )
         )
 
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.get("/me", response_model=list[OrderResponse])
+async def list_my_orders(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(Order)
+        .where(Order.customer_email == current_user.email)
+        .order_by(desc(Order.created_at))
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return result.scalars().all()
 
