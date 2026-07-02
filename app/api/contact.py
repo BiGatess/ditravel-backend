@@ -1,7 +1,10 @@
 import asyncio
 from html import escape as html_escape
 
-import resend
+try:
+    import resend
+except ModuleNotFoundError:  # pragma: no cover - optional dependency in some environments
+    resend = None
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -31,7 +34,7 @@ async def _get_support_email(db: AsyncSession) -> str | None:
 
 @router.post("/", response_model=ContactResponse, status_code=status.HTTP_202_ACCEPTED)
 async def submit_contact_request(data: ContactRequest, db: AsyncSession = Depends(get_db)):
-    if not settings.RESEND_API_KEY or not settings.EMAIL_FROM:
+    if resend is None or not settings.RESEND_API_KEY or not settings.EMAIL_FROM:
         raise HTTPException(status_code=503, detail="Chưa cấu hình email gửi hỗ trợ trên server.")
 
     support_email = await _get_support_email(db)

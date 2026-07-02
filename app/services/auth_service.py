@@ -5,7 +5,10 @@ import string
 from datetime import datetime, timedelta
 from html import escape as html_escape
 
-import resend
+try:
+    import resend
+except ModuleNotFoundError:  # pragma: no cover - optional dependency in some environments
+    resend = None
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -214,7 +217,7 @@ class AuthService:
 
     @staticmethod
     async def _send_otp_email(to_email: str, otp_code: str) -> bool:
-        if not settings.RESEND_API_KEY or not settings.EMAIL_FROM:
+        if resend is None or not settings.RESEND_API_KEY or not settings.EMAIL_FROM:
             return False
 
         def send_email_sync() -> bool:
